@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Admin Panel</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body class="bg-light">
+
+<nav class="navbar navbar-dark bg-dark px-3">
+  <span class="navbar-brand">Admin Panel</span>
+  <div class="text-white">
+    <span id="who"></span>
+    <button class="btn btn-sm btn-outline-light ms-2" onclick="logout()">Logout</button>
+  </div>
+</nav>
+
+<div class="container mt-4">
+  <div class="row g-3">
+    <div class="col-md-5">
+      <div class="card shadow">
+        <div class="card-body">
+          <h5>Users</h5>
+          <small class="text-muted">IDs are shown in Console (F12)</small>
+
+          <div class="table-responsive" style="max-height:420px; overflow:auto;">
+            <table class="table table-bordered table-sm">
+              <thead class="table-dark">
+                <tr>
+                  <th>Name</th>
+                  <th>Role</th>
+                  <th>Email</th>
+                </tr>
+              </thead>
+              <tbody id="users"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-md-7">
+      <div class="card shadow">
+        <div class="card-body">
+          <h5>All Submissions</h5>
+
+          <div class="table-responsive">
+            <table class="table table-bordered table-sm">
+              <thead class="table-dark">
+                <tr>
+                  <th>Student</th>
+                  <th>Title</th>
+                  <th>Status</th>
+                  <th>Faculty</th>
+                  <th>PDF</th>
+                  <th>Use</th>
+                </tr>
+              </thead>
+              <tbody id="subs"></tbody>
+            </table>
+          </div>
+
+          <div class="mt-3 p-2 border rounded bg-white">
+            <h6>Assign Faculty</h6>
+
+            <div class="row g-2">
+              <div class="col-md-6">
+                <input id="submissionId" class="form-control" placeholder="Paste Submission ID">
+              </div>
+              <div class="col-md-6">
+                <input id="facultyId" class="form-control" placeholder="Paste Faculty ID">
+              </div>
+            </div>
+
+            <button class="btn btn-primary mt-2" onclick="assign()">Assign</button>
+            <span id="msg" class="text-danger ms-2"></span>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+const API = "http://localhost:5000";
+const token = localStorage.getItem("token");
+
+if (!token || localStorage.getItem("role") !== "admin") {
+  location.href = "index.html";
+}
+
+document.getElementById("who").textContent = localStorage.getItem("name") || "Admin";
+
+function logout() {
+  localStorage.clear();
+  location.href = "index.html";
+}
+
+async function loadUsers() {
+  const res = await fetch(API + "/api/admin/users", {
+    headers: { "Authorization": "Bearer " + token }
+  });
+
+  const data = await res.json();
+  const tbody = document.getElementById("users");
+  tbody.innerHTML = "";
+
+  (data.users || []).forEach(u => {
+    tbody.innerHTML += `
+      <tr>
+        <td>${u.name}</td>
+        <td>${u.role}</td>
+        <td>${u.email}</td>
+      </tr>
+    `;
+  });
+
+  console.log("USERS with IDs:", data.users);
+}
+
+async function loadSubs() {
+  const res = await fetch(API + "/api/admin/submissions", {
+    headers: { "Authorization": "Bearer " + token }
+  });
+
+  const data = await res.json();
+  const tbody = document.getElementById("subs");
+  tbody.innerHTML = "";
+
+  (data.submissions || []).forEach(s => {
+    const student = s.studentId?.name || "";
+    const faculty = s.assignedFacultyId?.name || "-";
+
+    tbody.innerHTML += `
+      <tr>
+        <td>${student}</td>
+        <td>${s.title}</td>
+        <td>${s.status}</td>
+        <td>${faculty}</td>
+        <td><a href="${API + s.filePath}" target="_blank">Open</a></td>
+        <td><button class="btn btn-sm btn-warning" onclick="useSub('${s._id}')">Use</button></td>
+      </tr>
+    `;
+  });
+
+  console.log("SUBMISSIONS with IDs:", data.submissions);
+}
+
+function useSub(id) {
+  document.getElementById("submissionId").value = id;
+}
+
+async function assign() {
+  const msg = document.getElementById("msg");
+  msg.textContent = "";
+
+  const body = {
+    submissionId: document.getElementById("submissionId").value.trim(),
+    facultyId: document.getElementById("facultyId").value.trim()
+  };
+
+  const res = await fetch(API + "/api/admin/assign", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": "Bearer " + token
+    },
+    body: JSON.stringify(body)
+  });
+
+  const data = await res.json();
+
+  if (!res.ok) {
+    msg.textContent = data.message || "Assign failed";
+    return;
+  }
+
+  alert("Assigned Successfully!");
+  loadSubs();
+}
+
+loadUsers();
+loadSubs();
+</script>
+
+</body>
+</html>

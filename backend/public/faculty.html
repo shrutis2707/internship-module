@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Faculty Dashboard</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body class="bg-light">
+
+<nav class="navbar navbar-dark bg-dark px-3">
+  <span class="navbar-brand">Faculty Dashboard</span>
+  <div class="text-white">
+    <span id="who"></span>
+    <button class="btn btn-sm btn-outline-light ms-2" onclick="logout()">Logout</button>
+  </div>
+</nav>
+
+<div class="container mt-4">
+  <div class="card shadow">
+    <div class="card-body">
+      <h5>Assigned Submissions</h5>
+
+      <div class="table-responsive">
+        <table class="table table-bordered table-sm">
+          <thead class="table-dark">
+            <tr>
+              <th>Student</th>
+              <th>Title</th>
+              <th>Status</th>
+              <th>PDF</th>
+              <th>Review</th>
+            </tr>
+          </thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Review Modal -->
+<div class="modal fade" id="reviewModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+
+      <div class="modal-header">
+        <h5 class="modal-title">Evaluate Submission</h5>
+        <button class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+
+      <div class="modal-body">
+        <input type="hidden" id="sid">
+
+        <div class="mb-2">
+          <label>Marks</label>
+          <input id="marks" type="number" class="form-control" value="0">
+        </div>
+
+        <div class="mb-2">
+          <label>Decision</label>
+          <select id="decision" class="form-select">
+            <option value="Approved">Approved</option>
+            <option value="Resubmission Required">Resubmission Required</option>
+          </select>
+        </div>
+
+        <div class="mb-2">
+          <label>Remarks</label>
+          <textarea id="remarks" class="form-control" rows="3"></textarea>
+        </div>
+
+        <div id="msg" class="text-danger"></div>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button class="btn btn-primary" onclick="submitReview()">Submit</button>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+const API = "http://localhost:5000";
+const token = localStorage.getItem("token");
+
+if (!token || localStorage.getItem("role") !== "faculty") {
+  location.href = "index.html";
+}
+
+document.getElementById("who").textContent = localStorage.getItem("name") || "Faculty";
+
+function logout() {
+  localStorage.clear();
+  location.href = "index.html";
+}
+
+const modal = new bootstrap.Modal(document.getElementById("reviewModal"));
+
+async function loadAssigned() {
+  const res = await fetch(API + "/api/faculty/assigned", {
+    headers: { "Authorization": "Bearer " + token }
+  });
+
+  const data = await res.json();
+  const tbody = document.getElementById("rows");
+  tbody.innerHTML = "";
+
+  (data.submissions || []).forEach(s => {
+    tbody.innerHTML += `
+      <tr>
+        <td>${s.studentId?.name || ""}</td>
+        <td>${s.title}</td>
+        <td>${s.status}</td>
+        <td><a href="${API + s.filePath}" target="_blank">Open PDF</a></td>
+        <td>
+          <button class="btn btn-sm btn-success" onclick="openReview('${s._id}')">Review</button>
+        </td>
+      </tr>
+    `;
+  });
+}
+
+function openReview(id) {
+  document.getElementById("sid").value = id;
+  document.getElementById("marks").value = 0;
+  document.getElementById("decision").value = "Approved";
+  document.getElementById("remarks").value = "";
+  document.getElementById("msg").textContent = "";
+  modal.show();
+}
+
+async function submitReview() {
+  const msg = document.getElementById("msg");
+  msg.textContent = "";
+
+  const body = {
+    submissionId: document.getElementById("sid").value,
+    marks: document.getElementById("marks").value,
+    decision: document.getElementById("decision").value,
+    remarks: document.getElementById("remarks").value.trim()
+  };
+
+  const res = await fetch(API + "/api/faculty/review", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": "Bearer " + token
+    },
+    body: JSON.stringify(body)
+  });
+
+  const data = await res.json();
+
+  if (!res.ok) {
+    msg.textContent = data.message || "Review failed";
+    return;
+  }
+
+  modal.hide();
+  loadAssigned();
+}
+
+loadAssigned();
+</script>
+
+</body>
+</html>
