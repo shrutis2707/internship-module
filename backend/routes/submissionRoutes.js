@@ -2,36 +2,66 @@ const router = require("express").Router();
 const path = require("path");
 const fs = require("fs");
 const multer = require("multer");
+const { v4: uuidv4 } = require("uuid");
 
 const auth = require("../middleware/auth");
 const Submission = require("../models/Submission");
 const Review = require("../models/Review");
+const catchAsync = require("../utils/catchAsync");
+const { validate, uploadValidation, paginationValidation } = require("../middleware/validate");
+const ApiError = require("../utils/ApiError");
 
 const uploadDir = path.join(__dirname, "..", "uploads");
-if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir);
+if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
+
+// PDF magic number validation
+function validatePdfFile(filePath) {
+  const buffer = fs.readFileSync(filePath);
+  // PDF files start with %PDF
+  const pdfMagic = buffer.slice(0, 4).toString('ascii');
+  return pdfMagic === '%PDF';
+}
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, uploadDir),
   filename: (req, file, cb) => {
-    const safeName = Date.now() + "-" + file.originalname.replace(/\s+/g, "_");
-    cb(null, safeName);
+    const uniqueName = `${uuidv4()}-${file.originalname.replace(/\s+/g, "_")}`;
+    cb(null, uniqueName);
   }
 });
 
 function pdfOnly(req, file, cb) {
-  if (file.mimetype === "application/pdf") cb(null, true);
-  else cb(new Error("Only PDF allowed"));
+  if (file.mimetype === "application/pdf") {
+    cb(null, true);
+  } else {
+    cb(new ApiError(400, "Only PDF files are allowed"), false);
+  }
 }
 
-const upload = multer({ storage, fileFilter: pdfOnly, limits: { fileSize: 10 * 1024 * 1024 } });
+const upload = multer({
+  storage,
+  fileFilter: pdfOnly,
+  limits: { fileSize: 10 * 1024 * 1024 }
+});
 
 // Student upload
-router.post("/upload", auth("student"), upload.single("report"), async (req, res) => {
-  try {
-    const { title, type, domain, companyOrGuide } = req.body;
-    if (!req.file) return res.status(400).json({ message: "PDF required" });
-    if (!title || !type) return res.status(400).json({ message: "Title and type required" });
+router.post("/upload",
+  auth("student"),
+  upload.single("report"),
+  validate(uploadValidation),
+  catchAsync(async (req, res) => {
+    if (!req.file) {
+      throw new ApiError(400, "PDF file is required");
+    }
 
+    // Validate actual PDF content
+    const fullPath = path.join(uploadDir, req.file.filename);
+    if (!validatePdfFile(fullPath)) {
+      fs.unlinkSync(fullPath);
+      throw new ApiError(400, "Invalid PDF file");
+    }
+
+    const { title, type, domain, companyOrGuide } = req.body;
     const filePath = "/uploads/" + req.file.filename;
 
     const submission = await Submission.create({
@@ -44,18 +74,31 @@ router.post("/upload", auth("student"), upload.single("report"), async (req, res
       status: "Submitted"
     });
 
-    res.json({ message: "Uploaded", submission });
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-});
+    res.status(201).json({
+      success: true,
+      message: "Submission uploaded successfully",
+      submission
+    });
+  })
+);
 
 // Student view own submissions + reviews
-router.get("/mine", auth("student"), async (req, res) => {
-  try {
-    const submissions = await Submission.find({ studentId: req.user.userId })
-      .populate("assignedFacultyId", "name email")
-      .sort({ createdAt: -1 });
+router.get("/mine",
+  auth("student"),
+  validate(paginationValidation),
+  catchAsync(async (req, res) => {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
+
+    const [submissions, total] = await Promise.all([
+      Submission.find({ studentId: req.user.userId })
+        .populate("assignedFacultyId", "name email")
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit),
+      Submission.countDocuments({ studentId: req.user.userId })
+    ]);
 
     const ids = submissions.map((s) => s._id);
 
@@ -63,10 +106,54 @@ router.get("/mine", auth("student"), async (req, res) => {
       .populate("facultyId", "name email")
       .sort({ createdAt: -1 });
 
-    res.json({ submissions, reviews });
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-});
+    res.json({
+      success: true,
+      submissions,
+      reviews,
+      pagination: {
+        page,
+        limit,
+        total,
+        pages: Math.ceil(total / limit)
+      }
+    });
+  })
+);
+
+// Get single submission with reviews
+router.get("/:id",
+  auth(),
+  catchAsync(async (req, res) => {
+    const submission = await Submission.findById(req.params.id)
+      .populate("studentId", "name email dept year")
+      .populate("assignedFacultyId", "name email");
+
+    if (!submission) {
+      throw new ApiError(404, "Submission not found");
+    }
+
+    // Check permissions
+    const userRole = req.user.role;
+    const userId = req.user.userId;
+
+    if (userRole === "student" && submission.studentId._id.toString() !== userId) {
+      throw new ApiError(403, "You can only view your own submissions");
+    }
+
+    if (userRole === "faculty" && submission.assignedFacultyId?._id.toString() !== userId) {
+      throw new ApiError(403, "This submission is not assigned to you");
+    }
+
+    const reviews = await Review.find({ submissionId: submission._id })
+      .populate("facultyId", "name email")
+      .sort({ createdAt: -1 });
+
+    res.json({
+      success: true,
+      submission,
+      reviews
+    });
+  })
+);
 
 module.exports = router;
