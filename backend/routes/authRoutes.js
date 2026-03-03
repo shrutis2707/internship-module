@@ -1,9 +1,12 @@
 const router = require("express").Router();
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
+const crypto = require("crypto");
+const nodemailer = require("nodemailer");
 const User = require("../models/User");
 const catchAsync = require("../utils/catchAsync");
 const { validate, registerValidation, loginValidation } = require("../middleware/validate");
+const ApiError = require("../utils/ApiError");
 
 // Register
 router.post("/register", validate(registerValidation), catchAsync(async (req, res) => {
@@ -29,7 +32,7 @@ router.post("/register", validate(registerValidation), catchAsync(async (req, re
 router.post("/login", validate(loginValidation), catchAsync(async (req, res) => {
   const { email, password } = req.body;
 
-  const user = await User.findOne({ email }).select('+passwordHash');
+  const user = await User.findOne({ email });
   if (!user) {
     return res.status(401).json({ success: false, message: "Invalid credentials" });
   }
@@ -51,6 +54,98 @@ router.post("/login", validate(loginValidation), catchAsync(async (req, res) => 
     role: user.role,
     name: user.name,
     userId: user._id
+  });
+}));
+
+// Forgot Password
+router.post("/forgot-password", catchAsync(async (req, res) => {
+  const { email } = req.body;
+
+  if (!email) {
+    throw new ApiError(400, "Email is required");
+  }
+
+  const user = await User.findOne({ email });
+  if (!user) {
+    return res.json({
+      success: true,
+      message: "If an account exists, a password reset link has been sent"
+    });
+  }
+
+  const resetToken = crypto.randomBytes(32).toString('hex');
+  const resetPasswordToken = crypto.createHash('sha256').update(resetToken).digest('hex');
+  const resetPasswordExpires = Date.now() + 3600000;
+
+  user.resetPasswordToken = resetPasswordToken;
+  user.resetPasswordExpires = resetPasswordExpires;
+  await user.save();
+
+  if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
+    try {
+      const transporter = nodemailer.createTransporter({
+        service: 'gmail',
+        auth: {
+          user: process.env.EMAIL_USER,
+          pass: process.env.EMAIL_PASS
+        }
+      });
+      const resetUrl = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/reset-password?token=${resetToken}`;
+
+      await transporter.sendMail({
+        from: process.env.EMAIL_USER,
+        to: user.email,
+        subject: 'Password Reset Request',
+        html: `
+          <h2>Password Reset</h2>
+          <p>Click the link below to reset your password:</p>
+          <a href="${resetUrl}" style="padding: 10px 20px; background: #3b82f6; color: white; text-decoration: none; border-radius: 5px;">Reset Password</a>
+          <p>This link expires in 1 hour.</p>
+        `
+      });
+    } catch (emailError) {
+      console.error('Email sending failed:', emailError);
+    }
+  }
+
+  res.json({
+    success: true,
+    message: "If an account exists, a password reset link has been sent",
+    ...(process.env.NODE_ENV === 'development' && { resetToken })
+  });
+}));
+
+// Reset Password
+router.post("/reset-password", catchAsync(async (req, res) => {
+  const { token, password } = req.body;
+
+  if (!token || !password) {
+    throw new ApiError(400, "Token and password are required");
+  }
+
+  if (password.length < 8) {
+    throw new ApiError(400, "Password must be at least 8 characters");
+  }
+
+  const resetPasswordToken = crypto.createHash('sha256').update(token).digest('hex');
+  
+  const user = await User.findOne({
+    resetPasswordToken,
+    resetPasswordExpires: { $gt: Date.now() }
+  });
+
+  if (!user) {
+    throw new ApiError(400, "Invalid or expired reset token");
+  }
+
+  user.passwordHash = await bcrypt.hash(password, 12);
+  user.resetPasswordToken = null;
+  user.resetPasswordExpires = null;
+  await user.save();
+
+  res.json({
+    success: true,
+    message: "Password reset successfully"
   });
 }));
 

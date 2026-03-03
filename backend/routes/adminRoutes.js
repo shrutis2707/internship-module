@@ -2,6 +2,8 @@ const router = require("express").Router();
 const auth = require("../middleware/auth");
 const User = require("../models/User");
 const Submission = require("../models/Submission");
+const Task = require("../models/Task");
+const Certificate = require("../models/Certificate");
 const catchAsync = require("../utils/catchAsync");
 const { validate, assignFacultyValidation, paginationValidation } = require("../middleware/validate");
 const ApiError = require("../utils/ApiError");
@@ -178,6 +180,58 @@ router.get("/stats", auth("admin"), catchAsync(async (req, res) => {
         approved: approvedSubmissions
       }
     }
+  });
+}));
+
+// Search student by name or roll number and get all details
+router.get("/student/search", auth("admin"), catchAsync(async (req, res) => {
+  const { query } = req.query;
+
+  if (!query) {
+    throw new ApiError(400, "Search query is required");
+  }
+
+  // Search for student by name or email (as roll number)
+  const student = await User.findOne({
+    role: "student",
+    $or: [
+      { name: { $regex: query, $options: 'i' } },
+      { email: { $regex: query, $options: 'i' } }
+    ]
+  }).select("-passwordHash");
+
+  if (!student) {
+    throw new ApiError(404, "Student not found");
+  }
+
+  // Get all related data
+  const [tasks, certificates, submissions] = await Promise.all([
+    Task.find({ studentId: student._id }).sort({ date: -1 }),
+    Certificate.find({ studentId: student._id }).sort({ createdAt: -1 }),
+    Submission.find({ studentId: student._id })
+      .populate("assignedFacultyId", "name email")
+      .sort({ createdAt: -1 })
+  ]);
+
+  res.json({
+    success: true,
+    student: {
+      ...student.toObject(),
+      tasks,
+      certificates,
+      submissions
+    }
+  });
+}));
+
+// Get all students list (for dropdown)
+router.get("/students", auth("admin"), catchAsync(async (req, res) => {
+  const students = await User.find({ role: "student" }, "name email dept year")
+    .sort({ name: 1 });
+
+  res.json({
+    success: true,
+    students
   });
 }));
 

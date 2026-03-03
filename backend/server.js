@@ -9,6 +9,8 @@ require("dotenv").config();
 
 const authRoutes = require("./routes/authRoutes");
 const submissionRoutes = require("./routes/submissionRoutes");
+const taskRoutes = require("./routes/taskRoutes");
+const certificateRoutes = require("./routes/certificateRoutes");
 const adminRoutes = require("./routes/adminRoutes");
 const facultyRoutes = require("./routes/facultyRoutes");
 const errorHandler = require("./middleware/errorHandler");
@@ -62,6 +64,8 @@ app.use(express.static(path.join(__dirname, "..", "frontend", "dist")));
 // routes
 app.use("/api/auth", authRoutes);
 app.use("/api/submissions", submissionRoutes);
+app.use("/api/tasks", taskRoutes);
+app.use("/api/certificates", certificateRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/faculty", facultyRoutes);
 
