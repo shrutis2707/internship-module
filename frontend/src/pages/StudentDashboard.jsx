@@ -1,313 +1,386 @@
-import { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import {
-  Upload, FileText, LogOut, User, BookOpen, Building2, Tag,
-  Download, MessageSquare, Loader2, CheckCircle, Clock, AlertCircle
+  GraduationCap,
+  FileText,
+  Upload,
+  LogOut,
+  User,
+  ChevronDown,
+  CheckCircle,
+  Clock,
+  Award,
+  Calendar,
+  Search,
+  Bell,
+  Settings,
+  FileCheck,
+  UserCircle,
+  Edit3,
+  Lock
 } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
-import { submissionApi } from '../api/auth';
-import { formatDate, getStatusColor } from '../lib/utils';
+import { submissionApi } from '../api/submissions';
+import TaskManager from '../components/TaskManager';
+import UploadSection from '../components/UploadSection';
+import ProfileModal from '../components/student/ProfileModal';
+import UpdateProfileModal from '../components/student/UpdateProfileModal';
+import ChangePasswordModal from '../components/student/ChangePasswordModal';
 
 export default function StudentDashboard() {
-  const { user, logout } = useAuthStore();
-  const queryClient = useQueryClient();
-  const [uploadForm, setUploadForm] = useState({
-    title: '',
-    type: 'internship',
-    domain: '',
-    companyOrGuide: '',
-    report: null,
-  });
+  const [activeTab, setActiveTab] = useState('dashboard');
+  const [submissions, setSubmissions] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showProfileMenu, setShowProfileMenu] = useState(false);
+  const [showProfileModal, setShowProfileModal] = useState(false);
+  const [showUpdateModal, setShowUpdateModal] = useState(false);
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const navigate = useNavigate();
+  const { user, logout, setUser } = useAuthStore();
 
-  const { data: submissionsData, isLoading } = useQuery({
-    queryKey: ['my-submissions'],
-    queryFn: () => submissionApi.getMine().then(res => res.data),
-  });
+  useEffect(() => {
+    fetchSubmissions();
+  }, []);
 
-  const uploadMutation = useMutation({
-    mutationFn: submissionApi.upload,
-    onSuccess: () => {
-      toast.success('Submission uploaded successfully!');
-      setUploadForm({ title: '', type: 'internship', domain: '', companyOrGuide: '', report: null });
-      queryClient.invalidateQueries(['my-submissions']);
-    },
-    onError: (error) => {
-      toast.error(error.response?.data?.message || 'Upload failed');
-    },
-  });
-
-  const handleUpload = (e) => {
-    e.preventDefault();
-    if (!uploadForm.report) {
-      toast.error('Please select a PDF file');
-      return;
+  const fetchSubmissions = async () => {
+    try {
+      const response = await submissionApi.getMySubmissions();
+      setSubmissions(response.data.submissions || []);
+    } catch (error) {
+      console.error('Error fetching submissions:', error);
+    } finally {
+      setLoading(false);
     }
-    uploadMutation.mutate(uploadForm);
   };
 
   const handleLogout = () => {
     logout();
-    window.location.href = '/login';
+    toast.success('Logged out successfully');
+    navigate('/login');
   };
 
-  const submissions = submissionsData?.submissions || [];
-  const reviews = submissionsData?.reviews || [];
+  const handleProfileUpdate = (updatedData) => {
+    setUser({ ...user, ...updatedData });
+  };
+
+  const getStatusColor = (status) => {
+    switch (status) {
+      case 'Approved': return 'bg-green-100 text-green-700';
+      case 'Resubmission Required': return 'bg-red-100 text-red-700';
+      case 'Assigned': return 'bg-blue-100 text-blue-700';
+      default: return 'bg-yellow-100 text-yellow-700';
+    }
+  };
+
+  const getStatusIcon = (status) => {
+    switch (status) {
+      case 'Approved': return <CheckCircle className="w-4 h-4" />;
+      case 'Resubmission Required': return <Clock className="w-4 h-4" />;
+      default: return <Clock className="w-4 h-4" />;
+    }
+  };
+
+  const recentSubmissions = submissions.slice(0, 5);
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-slate-50">
       {/* Header */}
-      <header className="bg-white shadow-sm border-b">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between">
-          <div className="flex items-center space-x-3">
-            <div className="bg-blue-600 p-2 rounded-lg">
-              <BookOpen className="w-6 h-6 text-white" />
+      <header className="bg-white shadow-sm border-b border-slate-200">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between h-16">
+            <div className="flex items-center space-x-3">
+              <div className="bg-blue-500 p-2 rounded-lg">
+                <GraduationCap className="w-6 h-6 text-white" />
+              </div>
+              <span className="text-xl font-bold text-slate-800">Student Dashboard</span>
             </div>
-            <div>
-              <h1 className="text-xl font-bold text-gray-900">Student Portal</h1>
-              <p className="text-sm text-gray-500">Submit and track your reports</p>
+
+            <div className="flex items-center space-x-4">
+              <div className="relative">
+                <Search className="w-5 h-5 absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Search..."
+                  className="pl-10 pr-4 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent w-64"
+                />
+              </div>
+
+              <button className="relative p-2 text-slate-500 hover:text-slate-700">
+                <Bell className="w-5 h-5" />
+                <span className="absolute top-0 right-0 w-2 h-2 bg-red-500 rounded-full"></span>
+              </button>
+
+              {/* Profile Dropdown */}
+              <div className="relative">
+                <button
+                  onClick={() => setShowProfileMenu(!showProfileMenu)}
+                  className="flex items-center space-x-2 p-2 rounded-lg hover:bg-slate-100 transition-colors"
+                >
+                  <div className="w-9 h-9 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center shadow-md">
+                    <User className="w-5 h-5 text-white" />
+                  </div>
+                  <ChevronDown className={`w-4 h-4 text-slate-500 transition-transform ${showProfileMenu ? 'rotate-180' : ''}`} />
+                </button>
+
+                {showProfileMenu && (
+                  <div className="absolute right-0 mt-2 w-72 bg-white rounded-2xl shadow-xl border border-slate-200 py-2 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
+                    {/* User Info Header */}
+                    <div className="px-4 py-4 border-b border-slate-100">
+                      <div className="flex items-center space-x-3">
+                        <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center">
+                          <User className="w-6 h-6 text-white" />
+                        </div>
+                        <div>
+                          <p className="font-semibold text-slate-900">{user?.name}</p>
+                          <p className="text-sm text-slate-500">{user?.email}</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Menu Items */}
+                    <div className="py-2">
+                      <button 
+                        onClick={() => { setShowProfileModal(true); setShowProfileMenu(false); }}
+                        className="w-full px-4 py-3 text-left text-sm text-slate-700 hover:bg-blue-50 flex items-center space-x-3 transition-colors"
+                      >
+                        <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
+                          <UserCircle className="w-4 h-4 text-blue-600" />
+                        </div>
+                        <span className="font-medium">Profile</span>
+                      </button>
+
+                      <button 
+                        onClick={() => { setShowUpdateModal(true); setShowProfileMenu(false); }}
+                        className="w-full px-4 py-3 text-left text-sm text-slate-700 hover:bg-blue-50 flex items-center space-x-3 transition-colors"
+                      >
+                        <div className="w-8 h-8 bg-emerald-100 rounded-lg flex items-center justify-center">
+                          <Edit3 className="w-4 h-4 text-emerald-600" />
+                        </div>
+                        <span className="font-medium">Update Profile</span>
+                      </button>
+
+                      <button 
+                        onClick={() => { setShowPasswordModal(true); setShowProfileMenu(false); }}
+                        className="w-full px-4 py-3 text-left text-sm text-slate-700 hover:bg-blue-50 flex items-center space-x-3 transition-colors"
+                      >
+                        <div className="w-8 h-8 bg-amber-100 rounded-lg flex items-center justify-center">
+                          <Lock className="w-4 h-4 text-amber-600" />
+                        </div>
+                        <span className="font-medium">Change Password</span>
+                      </button>
+
+                      <div className="border-t border-slate-100 my-2"></div>
+
+                      <button 
+                        onClick={handleLogout}
+                        className="w-full px-4 py-3 text-left text-sm text-red-600 hover:bg-red-50 flex items-center space-x-3 transition-colors"
+                      >
+                        <div className="w-8 h-8 bg-red-100 rounded-lg flex items-center justify-center">
+                          <LogOut className="w-4 h-4 text-red-600" />
+                        </div>
+                        <span className="font-medium">Logout</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
-          <div className="flex items-center space-x-4">
-            <div className="flex items-center space-x-2 text-gray-600">
-              <User className="w-5 h-5" />
-              <span className="font-medium">{user?.name}</span>
-            </div>
-            <button
-              onClick={handleLogout}
-              className="flex items-center space-x-2 px-4 py-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-            >
-              <LogOut className="w-5 h-5" />
-              <span>Logout</span>
-            </button>
           </div>
         </div>
       </header>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Upload Form */}
-          <div className="lg:col-span-1">
-            <div className="bg-white rounded-xl shadow-sm border p-6">
-              <div className="flex items-center space-x-2 mb-6">
-                <Upload className="w-5 h-5 text-blue-600" />
-                <h2 className="text-lg font-semibold">New Submission</h2>
-              </div>
+        {/* Welcome Section */}
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-slate-900">Welcome back, {user?.name?.split(' ')[0]}!</h1>
+          <p className="text-slate-500 mt-1">Track your activities and manage your submissions</p>
+        </div>
 
-              <form onSubmit={handleUpload} className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Title
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-                    placeholder="Enter report title"
-                    value={uploadForm.title}
-                    onChange={(e) => setUploadForm({ ...uploadForm, title: e.target.value })}
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Type
-                  </label>
-                  <select
-                    className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-                    value={uploadForm.type}
-                    onChange={(e) => setUploadForm({ ...uploadForm, type: e.target.value })}
-                  >
-                    <option value="internship">Internship</option>
-                    <option value="project">Final Year Project</option>
-                    <option value="research">Research</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Domain
-                  </label>
-                  <input
-                    type="text"
-                    className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-                    placeholder="AI, Web, Data Science..."
-                    value={uploadForm.domain}
-                    onChange={(e) => setUploadForm({ ...uploadForm, domain: e.target.value })}
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Company / Guide
-                  </label>
-                  <input
-                    type="text"
-                    className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-                    placeholder="Company or Guide Name"
-                    value={uploadForm.companyOrGuide}
-                    onChange={(e) => setUploadForm({ ...uploadForm, companyOrGuide: e.target.value })}
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    PDF File
-                  </label>
-                  <input
-                    type="file"
-                    accept=".pdf"
-                    required
-                    className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
-                    onChange={(e) => setUploadForm({ ...uploadForm, report: e.target.files[0] })}
-                  />
-                  <p className="text-xs text-gray-500 mt-1">Maximum file size: 10MB</p>
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={uploadMutation.isPending}
-                  className="w-full bg-blue-600 text-white py-3 rounded-lg font-medium hover:bg-blue-700 focus:ring-4 focus:ring-blue-200 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
-                >
-                  {uploadMutation.isPending ? (
-                    <>
-                      <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                      Uploading...
-                    </>
-                  ) : (
-                    <>
-                      <Upload className="w-5 h-5 mr-2" />
-                      Submit Report
-                    </>
-                  )}
-                </button>
-              </form>
+        {/* Quick Action Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+          <button
+            onClick={() => setActiveTab('tasks')}
+            className={`p-6 rounded-2xl text-left transition-all ${
+              activeTab === 'tasks' 
+                ? 'bg-blue-500 text-white shadow-lg scale-105' 
+                : 'bg-blue-400 text-white hover:bg-blue-500 shadow-md'
+            }`}
+          >
+            <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center mb-4">
+              <Calendar className="w-6 h-6 text-white" />
             </div>
-          </div>
+            <h3 className="text-lg font-semibold">Task Manager</h3>
+            <p className="text-blue-100 text-sm mt-1">Track your daily activities</p>
+          </button>
 
-          {/* Submissions List */}
-          <div className="lg:col-span-2 space-y-6">
-            {/* My Submissions */}
-            <div className="bg-white rounded-xl shadow-sm border">
-              <div className="p-6 border-b">
-                <div className="flex items-center space-x-2">
-                  <FileText className="w-5 h-5 text-blue-600" />
-                  <h2 className="text-lg font-semibold">My Submissions</h2>
-                </div>
+          <button
+            onClick={() => setActiveTab('upload')}
+            className={`p-6 rounded-2xl text-left transition-all ${
+              activeTab === 'upload' 
+                ? 'bg-blue-500 text-white shadow-lg scale-105' 
+                : 'bg-blue-400 text-white hover:bg-blue-500 shadow-md'
+            }`}
+          >
+            <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center mb-4">
+              <Upload className="w-6 h-6 text-white" />
+            </div>
+            <h3 className="text-lg font-semibold">Upload Submission</h3>
+            <p className="text-blue-100 text-sm mt-1">Submit reports and certificates</p>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('dashboard')}
+            className={`p-6 rounded-2xl text-left transition-all ${
+              activeTab === 'dashboard' 
+                ? 'bg-blue-500 text-white shadow-lg scale-105' 
+                : 'bg-blue-400 text-white hover:bg-blue-500 shadow-md'
+            }`}
+          >
+            <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center mb-4">
+              <FileText className="w-6 h-6 text-white" />
+            </div>
+            <h3 className="text-lg font-semibold">View Submissions</h3>
+            <p className="text-blue-100 text-sm mt-1">Check all your submissions</p>
+          </button>
+        </div>
+
+        {/* Content Area */}
+        {activeTab === 'tasks' && <TaskManager />}
+        {activeTab === 'upload' && <UploadSection />}
+        {activeTab === 'dashboard' && (
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            {/* Recent Submissions Table */}
+            <div className="lg:col-span-2 bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-xl font-bold text-slate-900">Recent Submissions</h2>
+                <button className="text-blue-600 text-sm font-medium hover:text-blue-700">
+                  View All ?
+                </button>
               </div>
 
-              {isLoading ? (
-                <div className="p-8 text-center">
-                  <Loader2 className="w-8 h-8 animate-spin mx-auto text-blue-600" />
+              {loading ? (
+                <div className="flex items-center justify-center py-12">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
                 </div>
-              ) : submissions.length === 0 ? (
-                <div className="p-8 text-center text-gray-500">
-                  <FileText className="w-12 h-12 mx-auto mb-4 text-gray-300" />
+              ) : recentSubmissions.length === 0 ? (
+                <div className="text-center py-12 text-slate-500">
+                  <FileText className="w-12 h-12 mx-auto mb-4 text-slate-300" />
                   <p>No submissions yet</p>
-                  <p className="text-sm">Upload your first report using the form</p>
+                  <button
+                    onClick={() => setActiveTab('upload')}
+                    className="mt-4 text-blue-600 hover:text-blue-700 font-medium"
+                  >
+                    Upload your first submission
+                  </button>
                 </div>
               ) : (
-                <div className="divide-y">
-                  {submissions.map((submission) => (
-                    <div key={submission._id} className="p-6 hover:bg-gray-50 transition-colors">
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1">
-                          <div className="flex items-center space-x-3 mb-2">
-                            <h3 className="font-semibold text-gray-900">{submission.title}</h3>
-                            <span className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(submission.status)}`}>
-                              {submission.status}
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b border-slate-200">
+                        <th className="text-left py-3 px-4 font-medium text-slate-700">Title</th>
+                        <th className="text-left py-3 px-4 font-medium text-slate-700">Status</th>
+                        <th className="text-left py-3 px-4 font-medium text-slate-700">Submitted</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {recentSubmissions.map((sub) => (
+                        <tr key={sub._id} className="border-b border-slate-100 hover:bg-slate-50">
+                          <td className="py-4 px-4">
+                            <div className="font-medium text-slate-900">{sub.title}</div>
+                            <div className="text-sm text-slate-500">{sub.type}</div>
+                          </td>
+                          <td className="py-4 px-4">
+                            <span className={`inline-flex items-center space-x-1 px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(sub.status)}`}>
+                              {getStatusIcon(sub.status)}
+                              <span>{sub.status}</span>
                             </span>
-                          </div>
-                          <div className="flex items-center space-x-4 text-sm text-gray-500">
-                            <span className="flex items-center space-x-1">
-                              <Tag className="w-4 h-4" />
-                              <span className="capitalize">{submission.type}</span>
-                            </span>
-                            {submission.domain && (
-                              <span className="flex items-center space-x-1">
-                                <Building2 className="w-4 h-4" />
-                                <span>{submission.domain}</span>
-                              </span>
-                            )}
-                            <span className="flex items-center space-x-1">
-                              <Clock className="w-4 h-4" />
-                              <span>{formatDate(submission.createdAt)}</span>
-                            </span>
-                          </div>
-                          {submission.assignedFacultyId && (
-                            <p className="text-sm text-gray-600 mt-2">
-                              Assigned to: <span className="font-medium">{submission.assignedFacultyId.name}</span>
-                            </p>
-                          )}
-                        </div>
-                        <a
-                          href={`http://localhost:5000${submission.filePath}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="flex items-center space-x-1 px-4 py-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                        >
-                          <Download className="w-4 h-4" />
-                          <span>View</span>
-                        </a>
-                      </div>
-                    </div>
-                  ))}
+                          </td>
+                          <td className="py-4 px-4 text-slate-500">
+                            {new Date(sub.createdAt).toLocaleDateString()}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               )}
             </div>
 
-            {/* Reviews */}
-            {reviews.length > 0 && (
-              <div className="bg-white rounded-xl shadow-sm border">
-                <div className="p-6 border-b">
-                  <div className="flex items-center space-x-2">
-                    <MessageSquare className="w-5 h-5 text-green-600" />
-                    <h2 className="text-lg font-semibold">Feedback & Reviews</h2>
-                  </div>
+            {/* Side Panel */}
+            <div className="space-y-6">
+              {/* Recent Activity */}
+              <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="font-bold text-slate-900">Recent Activity</h3>
+                  <button className="text-blue-600 text-sm font-medium">View All ?</button>
                 </div>
-                <div className="divide-y">
-                  {reviews.map((review) => (
-                    <div key={review._id} className="p-6">
-                      <div className="flex items-start space-x-4">
-                        <div className={`p-2 rounded-lg ${review.decision === 'Approved' ? 'bg-green-100' : 'bg-yellow-100'}`}>
-                          {review.decision === 'Approved' ? (
-                            <CheckCircle className="w-5 h-5 text-green-600" />
-                          ) : (
-                            <AlertCircle className="w-5 h-5 text-yellow-600" />
-                          )}
-                        </div>
-                        <div className="flex-1">
-                          <div className="flex items-center space-x-2 mb-1">
-                            <span className={`px-2 py-1 rounded text-xs font-medium ${
-                              review.decision === 'Approved' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
-                            }`}>
-                              {review.decision}
-                            </span>
-                            <span className="text-sm text-gray-500">
-                              by {review.facultyId?.name}
-                            </span>
-                          </div>
-                          {review.remarks && (
-                            <p className="text-gray-700 mt-2">{review.remarks}</p>
-                          )}
-                          {review.marks > 0 && (
-                            <p className="text-sm text-gray-500 mt-1">
-                              Marks: <span className="font-medium">{review.marks}/100</span>
-                            </p>
-                          )}
-                          <p className="text-xs text-gray-400 mt-2">
-                            {formatDate(review.createdAt)}
-                          </p>
-                        </div>
+                <div className="space-y-4">
+                  {recentSubmissions.slice(0, 3).map((sub, idx) => (
+                    <div key={idx} className="flex items-start space-x-3">
+                      <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0">
+                        <Award className="w-5 h-5 text-blue-600" />
+                      </div>
+                      <div>
+                        <p className="font-medium text-slate-900 text-sm">{sub.title}</p>
+                        <p className={`text-xs mt-1 ${sub.status === 'Approved' ? 'text-green-600' : 'text-yellow-600'}`}>
+                          {sub.status}
+                        </p>
                       </div>
                     </div>
                   ))}
+                  {recentSubmissions.length === 0 && (
+                    <p className="text-slate-500 text-sm text-center py-4">No recent activity</p>
+                  )}
                 </div>
               </div>
-            )}
+
+              {/* Quick Stats */}
+              <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-2xl shadow-lg p-6 text-white">
+                <h3 className="font-bold mb-4">Quick Stats</h3>
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <span className="text-blue-100">Total Submissions</span>
+                    <span className="font-bold text-2xl">{submissions.length}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-blue-100">Approved</span>
+                    <span className="font-bold text-2xl">
+                      {submissions.filter(s => s.status === 'Approved').length}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-blue-100">Pending</span>
+                    <span className="font-bold text-2xl">
+                      {submissions.filter(s => s.status !== 'Approved').length}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
-        </div>
+        )}
       </main>
+
+      {/* Profile Modal */}
+      {showProfileModal && (
+        <ProfileModal user={user} onClose={() => setShowProfileModal(false)} />
+      )}
+
+      {/* Update Profile Modal */}
+      {showUpdateModal && (
+        <UpdateProfileModal 
+          user={user} 
+          onClose={() => setShowUpdateModal(false)} 
+          onUpdate={handleProfileUpdate}
+        />
+      )}
+
+      {/* Change Password Modal */}
+      {showPasswordModal && (
+        <ChangePasswordModal onClose={() => setShowPasswordModal(false)} />
+      )}
     </div>
   );
 }

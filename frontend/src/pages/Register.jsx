@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { toast } from 'sonner';
-import { Loader2, GraduationCap, UserPlus } from 'lucide-react';
+import { Loader2, UserPlus } from 'lucide-react';
 import { authApi } from '../api/auth';
 
 export default function Register() {
@@ -14,18 +14,34 @@ export default function Register() {
     year: '',
   });
   const [loading, setLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
   const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
+    setErrorMsg('');
 
     try {
-      await authApi.register(formData);
+      console.log('Sending registration data:', formData);
+      const response = await authApi.register(formData);
+      const data = response.data;
+      console.log('Registration response:', data);
+
+      if (!data.success) {
+        toast.error(data.message || 'Registration failed');
+        setErrorMsg(data.message || 'Registration failed');
+        return;
+      }
+
       toast.success('Registration successful! Please login.');
       navigate('/login');
     } catch (error) {
-      toast.error(error.response?.data?.message || 'Registration failed');
+      console.error('Registration error:', error);
+      console.error('Error response:', error.response);
+      const message = error.response?.data?.message || error.message || 'Registration failed. Please try again.';
+      toast.error(message);
+      setErrorMsg(message);
     } finally {
       setLoading(false);
     }
@@ -41,6 +57,12 @@ export default function Register() {
           <h1 className="text-2xl font-bold text-gray-900">Create Account</h1>
           <p className="text-gray-500 mt-2">Join our academic portal</p>
         </div>
+
+        {errorMsg && (
+          <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+            <strong>Error:</strong> {errorMsg}
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
@@ -82,10 +104,13 @@ export default function Register() {
                 type="password"
                 required
                 className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none transition-all"
-                placeholder="Min 6 characters"
+                placeholder="Min 8 characters"
                 value={formData.password}
                 onChange={(e) => setFormData({ ...formData, password: e.target.value })}
               />
+              <p className="text-xs text-gray-500 mt-1">
+                8+ chars, uppercase, lowercase, number
+              </p>
             </div>
 
             <div>

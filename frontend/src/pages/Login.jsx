@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { toast } from 'sonner';
-import { Loader2, GraduationCap } from 'lucide-react';
+import { Loader2, GraduationCap, Lock } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
 import { authApi } from '../api/auth';
 
@@ -17,11 +17,19 @@ export default function Login() {
 
     try {
       const response = await authApi.login(formData);
-      login(response.data);
+      const data = response.data;
+      
+      if (!data.success) {
+        toast.error(data.message || 'Login failed');
+        return;
+      }
+      
+      login(data);
       toast.success('Login successful!');
-      navigate(`/${response.data.role}`);
+      navigate(`/${data.role}`);
     } catch (error) {
-      toast.error(error.response?.data?.message || 'Login failed');
+      console.error('Login error:', error);
+      toast.error(error.response?.data?.message || 'Login failed. Please check your credentials.');
     } finally {
       setLoading(false);
     }
@@ -67,6 +75,22 @@ export default function Login() {
             />
           </div>
 
+          <div className="flex items-center justify-between">
+            <div className="flex items-center">
+              <input
+                type="checkbox"
+                id="remember"
+                className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+              />
+              <label htmlFor="remember" className="ml-2 block text-sm text-gray-700">
+                Remember me
+              </label>
+            </div>
+            <Link to="/forgot-password" className="text-sm text-blue-600 hover:text-blue-700 font-medium">
+              Forgot password?
+            </Link>
+          </div>
+
           <button
             type="submit"
             disabled={loading}
@@ -84,7 +108,7 @@ export default function Login() {
         </form>
 
         <p className="text-center mt-6 text-gray-600">
-          Don't have an account?{' '}
+          Do not have an account?{' '}
           <Link to="/register" className="text-blue-600 hover:text-blue-700 font-medium">
             Create one
           </Link>
